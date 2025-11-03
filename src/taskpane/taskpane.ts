@@ -15,26 +15,36 @@ Office.onReady(() => {
 export async function run() {
   try {
     OfficeExtension.config.extendedErrorLogging = true;
-    await Excel.run(async (context) => {
+    await Excel.run({ mergeUndoGroup: true }, async (context) => {
       const newSheetName = "NewSheet";
       let newSheet = context.workbook.worksheets.getItemOrNullObject(newSheetName);
+      const currentCell = context.workbook.getActiveCell();
+      currentCell.load("address");
       await context.sync();
+      let newSheetCreated = false;
+      let nextFreeCell;
       if (newSheet.isNullObject) {
         context.workbook.worksheets.add(newSheetName);
         await context.sync();
         console.log("New sheet added");
+        newSheetCreated = true;
+        newSheet = context.workbook.worksheets.getItem(newSheetName);
+        nextFreeCell = newSheet.getRange("A1");
+      } else {
+        newSheet = context.workbook.worksheets.getItem(newSheetName);
+        const column = newSheet.getRange("A:A");
+        const usedRange = column.getUsedRange();
+        usedRange.load("rowCount, rowIndex");
+        await context.sync();
+        const nextRow = usedRange.rowIndex + usedRange.rowCount;
+        nextFreeCell = newSheet.getCell(nextRow, 0);
       }
-      newSheet = context.workbook.worksheets.getItem(newSheetName);
-      const nextFreeCell = newSheet.getCell(0, 0);
       nextFreeCell.load("address");
+      nextFreeCell.values = [[currentCell.address]];
       await context.sync();
-      nextFreeCell.values = [["A1:B2"]];
-      await context.sync();
-      const formula = "=" + "CONTOSO.FILLANDAPPLYSTYLE" + "('" + newSheetName + "'!A1)";
+      const formula = `=CONTOSO.FILLANDAPPLYSTYLE('${nextFreeCell.address.split("!")[0]}'!${nextFreeCell.address.split("!")[1]})`;
       // const formula = "=" + 'CONTOSO.FILLANDAPPLYSTYLE("A1:B2")'; // Alternative formula without sheet name = no error
-      const sheet = context.workbook.worksheets.getActiveWorksheet();
-      const targetRange = sheet.getRange("A1");
-      targetRange.formulas = [[formula]];
+      currentCell.formulas = [[formula]];
       await context.sync();
       console.log("Custom function formula set in cell");
     });
